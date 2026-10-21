@@ -1,0 +1,4 @@
+# Built app (rebuild with ./build.sh)
+MacTemp.app/
+.build/
+.DS_Store
