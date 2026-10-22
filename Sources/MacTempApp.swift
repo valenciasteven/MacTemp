@@ -10,7 +10,11 @@ struct MacTempApp: App {
         MenuBarExtra {
             MenuContent(model: model)
         } label: {
-            Text(model.menuBarText)
+            if let color = model.level?.nsColor {
+                Image(nsImage: MenuBarLabel.image(model.menuBarText, color: color))
+            } else {
+                Text(model.menuBarText)
+            }
         }
         .menuBarExtraStyle(.window)
     }
@@ -67,6 +71,8 @@ final class TempModel: ObservableObject {
         return "\(Int(display(c).rounded()))\(unit)"
     }
 
+    var level: TempLevel? { celsius.map(TempLevel.init(celsius:)) }
+
     var label: String {
         guard let c = celsius else { return thermalText }
         switch c {
@@ -94,6 +100,7 @@ struct MenuContent: View {
         VStack(alignment: .leading, spacing: 10) {
             if let c = model.celsius, let f = model.fahrenheit {
                 Text(String(format: "%.1f°C / %.1f°F", c, f)).font(.title2.bold())
+                    .foregroundStyle(model.level?.color ?? .primary)
                 Text("Feels: \(model.label)")
             } else {
                 Text("Temperature sensors not readable").font(.headline)
@@ -132,11 +139,14 @@ struct HistoryView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
+                let lo = model.display(values.min()!) - 2
+                let hi = model.display(values.max()!) + 2
                 Chart(model.readings) { r in
                     LineMark(x: .value("Time", r.date), y: .value("Temp", model.display(r.celsius)))
                         .interpolationMethod(.monotone)
+                        .foregroundStyle(lineGradient(lo: lo, hi: hi))
                 }
-                .chartYScale(domain: .automatic(includesZero: false))
+                .chartYScale(domain: lo...hi)
                 .chartXAxis {
                     AxisMarks(values: .automatic(desiredCount: 4)) { _ in
                         AxisGridLine()
@@ -154,6 +164,18 @@ struct HistoryView: View {
                 }
             }
         }
+    }
+
+    /// Vertical gradient with hard color changes at the blue / red thresholds.
+    private func lineGradient(lo: Double, hi: Double) -> LinearGradient {
+        func at(_ c: Double) -> CGFloat { CGFloat(min(max((model.display(c) - lo) / (hi - lo), 0), 1)) }
+        let blueTop = at(TempLevel.lowBelow), redBottom = at(TempLevel.highFrom)
+        let stops: [Gradient.Stop] = [
+            .init(color: .blue, location: 0), .init(color: .blue, location: blueTop),
+            .init(color: .primary, location: blueTop), .init(color: .primary, location: redBottom),
+            .init(color: .red, location: redBottom), .init(color: .red, location: 1),
+        ]
+        return LinearGradient(stops: stops, startPoint: .bottom, endPoint: .top)
     }
 
     private func stat(_ title: String, _ c: Double) -> some View {
